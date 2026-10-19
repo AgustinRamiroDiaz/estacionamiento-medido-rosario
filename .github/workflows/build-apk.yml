@@ -1,0 +1,70 @@
+name: Build Android APK
+
+# Publica el APK en un GitHub Release al pushear un tag v* (p.ej. v1.0.0).
+# También se puede correr a mano (workflow_dispatch): deja el APK como artifact.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write # necesario para crear el Release y subir el APK
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prebuild (genera android/)
+        run: npx expo prebuild --platform android --no-install
+
+      - name: Build release APK
+        run: ./gradlew assembleRelease --no-daemon
+        working-directory: app/android
+
+      - name: Locate APK
+        id: apk
+        run: echo "path=app/android/app/build/outputs/apk/release/app-release.apk" >> "$GITHUB_OUTPUT"
+        working-directory: .
+
+      # Corrida manual: dejar el APK como artifact descargable.
+      - name: Upload artifact
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: estacionamiento-rosario-apk
+          path: ${{ steps.apk.outputs.path }}
+
+      # Push de tag: publicar el APK en un Release.
+      - name: Publish to Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.apk.outputs.path }}
+          body: |
+            APK del cliente alternativo del estacionamiento medido de Rosario.
+
+            Instalación: descargá el `.apk` y habilitá "instalar apps de orígenes
+            desconocidos". Está firmado con la clave de debug (sirve para sideload,
+            no para Google Play).
