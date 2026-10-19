@@ -1,0 +1,7 @@
+# Binarios propietarios y artefactos de análisis — NO versionar
+*.apk
+*.xapk
+*.bundle
+jadx_out/
+bundle/
+venv/

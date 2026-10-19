@@ -1,0 +1,197 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Response>
+<error>0</error>
+<commerces>
+<commerce>
+<id>81</id>
+<address>ALVEAR 483</address>
+<latitude>-32.9396591, -60.6536446</latitude>
+</commerce>
+<commerce>
+<id>157</id>
+<address>ALVEAR 598</address>
+<latitude>-32.9410782, -60.6541748</latitude>
+</commerce>
+<commerce>
+<id>162</id>
+<address>AV PELLEGRINI 1798</address>
+<latitude>-32.9554291, -60.6505470</latitude>
+</commerce>
+<commerce>
+<id>115</id>
+<address>AV WHEELWRIGHT 1421</address>
+<latitude>-32.9371109, -60.6410065</latitude>
+</commerce>
+<commerce>
+<id>24</id>
+<address>AV. PELLEGRINI 750</address>
+<latitude>-32.9580460, -60.6362228</latitude>
+</commerce>
+<commerce>
+<id>41</id>
+<address>BALCARCE 1493</address>
+<latitude>-32.9523697, -60.6539040</latitude>
+</commerce>
+<commerce>
+<id>40</id>
+<address>BALCARCE 893</address>
+<latitude>-32.9451027, -60.6521797</latitude>
+</commerce>
+<commerce>
+<id>65</id>
+<address>BROWN 1711</address>
+<latitude>-32.9356384, -60.6444206</latitude>
+</commerce>
+<commerce>
+<id>131</id>
+<address>BROWN 1946</address>
+<latitude>-32.9587021, -60.6930428</latitude>
+</commerce>
+<commerce>
+<id>43</id>
+<address>BUENOS AIRES 1271</address>
+<latitude>-32.9533615, -60.6340942</latitude>
+</commerce>
+<commerce>
+<id>153</id>
+<address>BV OROÑO 1163</address>
+<latitude>-32.9480286, -60.6543808</latitude>
+</commerce>
+<commerce>
+<id>139</id>
+<address>CORDOBA 2085</address>
+<latitude>-32.9441109, -60.6517601</latitude>
+</commerce>
+<commerce>
+<id>112</id>
+<address>CORRIENTES 1391</address>
+<latitude>-32.9530334, -60.6441841</latitude>
+</commerce>
+<commerce>
+<id>120</id>
+<address>DORREGO 1389</address>
+<latitude>-32.9517708, -60.6509972</latitude>
+</commerce>
+<commerce>
+<id>46</id>
+<address>DORREGO 825</address>
+<latitude>-32.9449081, -60.6494141</latitude>
+</commerce>
+<commerce>
+<id>137</id>
+<address>ESPAÑA 564</address>
+<latitude>-32.9422226, -60.6459541</latitude>
+</commerce>
+<commerce>
+<id>132</id>
+<address>ITALIA 1045</address>
+<latitude>-32.9477768, -60.6485939</latitude>
+</commerce>
+<commerce>
+<id>122</id>
+<address>ITALIA 589</address>
+<latitude>-32.9422264, -60.6473579</latitude>
+</commerce>
+<commerce>
+<id>133</id>
+<address>ITALIA 928</address>
+<latitude>-32.9463120, -60.6483612</latitude>
+</commerce>
+<commerce>
+<id>127</id>
+<address>MENDOZA 1639</address>
+<latitude>-32.9503403, -60.6470490</latitude>
+</commerce>
+<commerce>
+<id>105</id>
+<address>MITRE 1328</address>
+<latitude>-32.9527473, -60.6413116</latitude>
+</commerce>
+<commerce>
+<id>18</id>
+<address>MITRE 340</address>
+<latitude>-32.9409218, -60.6382294</latitude>
+</commerce>
+<commerce>
+<id>107</id>
+<address>MONTEVIDEO 1707</address>
+<latitude>-32.9547119, -60.6490746</latitude>
+</commerce>
+<commerce>
+<id>165</id>
+<address>MONTEVIDEO 1991</address>
+<latitude>-32.9541206, -60.6527596</latitude>
+</commerce>
+<commerce>
+<id>160</id>
+<address>PARAGUAY 1014</address>
+<latitude>-32.9482536, -60.6445465</latitude>
+</commerce>
+<commerce>
+<id>164</id>
+<address>PTE ROCA  1065</address>
+<latitude>-32.9486656, -60.6456909</latitude>
+</commerce>
+<commerce>
+<id>113</id>
+<address>PTE ROCA 830</address>
+<latitude>-32.9454994, -60.6453056</latitude>
+</commerce>
+<commerce>
+<id>163</id>
+<address>RICARDONE 1322</address>
+<latitude>-32.9475899, -60.6416855</latitude>
+</commerce>
+<commerce>
+<id>130</id>
+<address>RIOJA 1515</address>
+<latitude>-32.9465981, -60.6442490</latitude>
+</commerce>
+<commerce>
+<id>147</id>
+<address>RIOJA 2136</address>
+<latitude>-32.9449806, -60.6526070</latitude>
+</commerce>
+<commerce>
+<id>148</id>
+<address>SALTA 2087</address>
+<latitude>-32.9371338, -60.6499023</latitude>
+</commerce>
+<commerce>
+<id>155</id>
+<address>SAN JUAN 1940</address>
+<latitude>-32.9479065, -60.6513863</latitude>
+</commerce>
+<commerce>
+<id>138</id>
+<address>SAN LORENZO 1601</address>
+<latitude>-32.9428787, -60.6445389</latitude>
+</commerce>
+<commerce>
+<id>152</id>
+<address>SAN MARTÍN 1207</address>
+<latitude>-32.9519424, -60.6378555</latitude>
+</commerce>
+<commerce>
+<id>106</id>
+<address>SAN MARTIN 1480</address>
+<latitude>-32.9549637, -60.6387901</latitude>
+</commerce>
+<commerce>
+<id>166</id>
+<address>SAN MARTÍN 1621</address>
+<latitude>-32.9568100, -60.6391258</latitude>
+</commerce>
+<commerce>
+<id>151</id>
+<address>SANTA FE 1492</address>
+<latitude>-32.9439926, -60.6431465</latitude>
+</commerce>
+<commerce>
+<id>118</id>
+<address>TUCUMAN 1491</address>
+<latitude>-32.9408836, -60.6424065</latitude>
+</commerce>
+</commerces>
+</Response>
+
