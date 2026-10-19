@@ -5,3 +5,6 @@
 jadx_out/
 bundle/
 venv/
+
+# Datos de sesión / credenciales — NUNCA versionar
+.secrets/
