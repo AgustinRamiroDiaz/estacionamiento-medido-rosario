@@ -25,10 +25,10 @@ Response (~680 bytes) — trae **config + hashes de sync + dashboard** de una:
   <mce>true</mce>     <!-- MacroClick habilitado  -->
   <mpk>APP_USR-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx</mpk>  <!-- MP public key -->
 
-  <!-- flags/counters (nombres a confirmar) -->
-  <otm>true</otm>     <!-- bool, sin confirmar -->
-  <thm>6</thm>        <!-- entero, sin confirmar -->
-  <qre>false</qre>    <!-- bool, sin confirmar -->
+  <!-- flags/counters -->
+  <otm>true</otm>     <!-- IGNORADO por el cliente (no se lee en el bundle v5.17.0) -->
+  <thm>6</thm>        <!-- entero; leído del estado user en pantallas de montos/tickets -->
+  <qre>false</qre>    <!-- IGNORADO por el cliente (no se lee en el bundle v5.17.0) -->
 
   <uid>123456</uid>   <!-- id de usuario -->
 
@@ -61,7 +61,9 @@ Response (~680 bytes) — trae **config + hashes de sync + dashboard** de una:
 |-----|-------------|
 | `sth` / `tah` / `tth` | hashes de street map / montos de recarga / tabla de tarifas |
 | `mpe` `mpc` `mce` `mpk` | config MercadoPago / MacroClick (ver `getConfiguration`) |
-| `otm` `thm` `qre` | flags/counter sin nombre confirmado |
+| `otm` | booleano. **No lo usa el cliente** (sin referencias en el bundle v5.17.0) |
+| `thm` | entero (obs. `6`). Lo lee el estado Redux `user` en pantallas de montos/tickets; significado exacto no resuelto desde el bytecode |
+| `qre` | booleano. **No lo usa el cliente** (sin referencias en el bundle v5.17.0) |
 | `uid` | id de usuario |
 | `balance.credit` | saldo (centavos) |
 | `balance.available` | saldo disponible (centavos) — puede diferir de `credit` si hay retenciones |
@@ -101,7 +103,8 @@ de dashboard** de `signin`, sin config ni hashes ni `uid`:
 
 ## Pendientes
 
-- Confirmar `otm` / `thm` / `qre`.
+- `otm` / `qre`: confirmados como no usados por el cliente. `thm`: usado pero sin
+  etiqueta legible en el bytecode (ver `reversing/` para reproducir el análisis).
 - Capturar `active-parking-status` **con un ticket activo** para ver su estructura
   (requiere iniciar un estacionamiento — operación de pago, con saldo real).
 - `src`: confirmado que acepta número de celular; falta ver si también acepta DNI/abonado.

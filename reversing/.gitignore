@@ -1,0 +1,7 @@
+# Artefactos pesados / propietarios — NO versionar (reproducibles con decompile.sh)
+work/
+venv/
+tools/
+*.xapk
+*.apk
+*.bundle
