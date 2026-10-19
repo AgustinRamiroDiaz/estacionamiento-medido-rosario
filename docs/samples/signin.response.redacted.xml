@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Response>
+<error>0</error>
+<sth>85cbe1</sth><tah>37f7f2</tah><tth>9ede35</tth>
+<otm>true</otm><mpe>true</mpe><mpc>web</mpc><mce>true</mce><thm>6</thm><qre>false</qre>
+<uid>123456</uid>
+<mpk>APP_USR-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx</mpk>
+<balance><credit>50000</credit><available>50000</available></balance>
+<default-car-license><lic>ABC123</lic></default-car-license>
+<streets></streets>
+<vehicles>
+<vehicle><lic>ABC123</lic><def>true</def><not>false</not></vehicle>
+<vehicle><lic>AD456DF</lic><def>false</def><not>false</not></vehicle>
+</vehicles>
+<active-parking-status></active-parking-status>
+</Response>

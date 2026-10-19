@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Response>
+<error>0</error>
+<balance><credit>50000</credit><available>50000</available></balance>
+<default-car-license><lic>ABC123</lic></default-car-license>
+<streets></streets>
+<vehicles>
+<vehicle><lic>ABC123</lic><def>true</def><not>false</not></vehicle>
+<vehicle><lic>AD456DF</lic><def>false</def><not>false</not></vehicle>
+</vehicles>
+<active-parking-status></active-parking-status>
+</Response>
