@@ -29,9 +29,9 @@ El protocolo está documentado en [`../docs/`](../docs/).
 ## Desarrollo
 
 ```sh
-npm install
-npx expo start          # abrir en Expo Go o emulador
-npx tsc --noEmit        # typecheck
+pnpm install
+pnpm expo start         # abrir en Expo Go o emulador
+pnpm tsc --noEmit       # typecheck
 ```
 
 > Nota: `fetch` nativo en Android no sufre CORS. En Expo Go el manejo de cookies es
