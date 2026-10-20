@@ -25,11 +25,13 @@ ABH_FILE="$SEC/abh"
 COOKIES="$SEC/cookies.txt"
 RESP="$SEC/signin.response.xml"
 
-# abh = UUID de instalación, estable entre corridas (como hace la app real)
+# UUID de instalación, estable entre corridas. El abh que viaja es
+# MD5(uuid + epoch_ms)[0:16], nuevo por request: el server rechaza uno repetido
+# con B98 (como generateAntiBounceHash de la app real).
 if [[ ! -f "$ABH_FILE" ]]; then
   cat /proc/sys/kernel/random/uuid > "$ABH_FILE"
 fi
-ABH="$(cat "$ABH_FILE")"
+ABH="$(printf '%s%s' "$(cat "$ABH_FILE")" "$(date +%s%3N)" | md5sum | cut -c1-16)"
 
 # --- Credenciales (el PIN no se muestra) ---
 SRC="${SRC:-}"

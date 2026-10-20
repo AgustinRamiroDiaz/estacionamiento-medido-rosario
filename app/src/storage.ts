@@ -1,5 +1,6 @@
-// Persistencia local. El `abh` es el UUID de instalación: se genera una vez y
-// se reusa (como hace la app oficial). No es un dato sensible.
+// Persistencia local. UUID de instalación: se genera una vez y se reusa como
+// base del `abh` de cada request (ver antiBounceHash en api/gateway.ts). No es
+// un dato sensible.
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { randomUUID } from 'expo-crypto';

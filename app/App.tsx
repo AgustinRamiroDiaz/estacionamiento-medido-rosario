@@ -17,8 +17,16 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { refreshDashboard, setDefaultVehicle, signin, clearSession } from './src/api/gateway';
-import { Account } from './src/api/types';
+import {
+  addVehicle,
+  clearSession,
+  refreshDashboard,
+  removeVehicle,
+  setDefaultVehicle,
+  signin,
+} from './src/api/gateway';
+import { Account, Vehicle } from './src/api/types';
+import { MAX_VEHICLES, isValidPlate, normalizePlate } from './src/plates';
 
 const pesos = (n: number) =>
   n.toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
@@ -124,25 +132,65 @@ function Dashboard({
     }
   }, [onAccount]);
 
-  const [changingPlate, setChangingPlate] = useState<string | null>(null);
+  const [busyPlate, setBusyPlate] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [newPlate, setNewPlate] = useState('');
 
-  const makeDefault = async (plate: string) => {
-    setChangingPlate(plate);
+  /** Corre una operación que devuelve la lista de vehículos y actualiza la cuenta. */
+  const mutateVehicles = async (
+    plate: string,
+    op: (lic: string) => Promise<Vehicle[]>,
+    errorTitle: string,
+  ): Promise<boolean> => {
+    setBusyPlate(plate);
     try {
-      const vehicles = await setDefaultVehicle(plate);
+      const vehicles = await op(plate);
       // Si la respuesta no trae <vehicles>, no pisamos la lista con una vacía.
       if (vehicles.length === 0) {
         onAccount(await refreshDashboard());
-        return;
+        return true;
       }
       const def = vehicles.find((v) => v.isDefault)?.plate;
-      onAccount({ ...account, vehicles, defaultPlate: def ?? account.defaultPlate });
+      onAccount({ ...account, vehicles, defaultPlate: def });
+      return true;
     } catch (e: any) {
-      Alert.alert('No se pudo cambiar la patente', e?.message ?? 'Error');
+      Alert.alert(errorTitle, e?.message ?? 'Error');
+      return false;
     } finally {
-      setChangingPlate(null);
+      setBusyPlate(null);
     }
   };
+
+  const makeDefault = (plate: string) =>
+    mutateVehicles(plate, setDefaultVehicle, 'No se pudo cambiar la patente');
+
+  const confirmRemove = (plate: string) =>
+    Alert.alert('Borrar vehículo', `¿Borrar ${plate} de tu cuenta?`, [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Borrar',
+        style: 'destructive',
+        onPress: () => mutateVehicles(plate, removeVehicle, 'No se pudo borrar el vehículo'),
+      },
+    ]);
+
+  const submitNewPlate = async () => {
+    const plate = normalizePlate(newPlate);
+    if (!isValidPlate(plate)) {
+      Alert.alert('Patente inválida', 'Formatos válidos: ABC123, AB123CD, 123ABC o A123BCD.');
+      return;
+    }
+    if (account.vehicles.some((v) => v.plate === plate)) {
+      Alert.alert('Ya está cargada', `${plate} ya está en tu cuenta.`);
+      return;
+    }
+    setAdding(true);
+    const ok = await mutateVehicles(plate, addVehicle, 'No se pudo agregar el vehículo');
+    setAdding(false);
+    if (ok) setNewPlate('');
+  };
+
+  const canAdd = account.vehicles.length < MAX_VEHICLES;
 
   return (
     <ScrollView
@@ -184,19 +232,57 @@ function Dashboard({
           key={v.plate}
           style={styles.vehicleRow}
           onPress={() => makeDefault(v.plate)}
-          disabled={v.isDefault || changingPlate !== null}
+          disabled={v.isDefault || busyPlate !== null}
         >
           <Text style={styles.plate}>{v.plate}</Text>
           <View style={styles.badges}>
-            {changingPlate === v.plate && <ActivityIndicator color="#fff" size="small" />}
+            {busyPlate === v.plate && <ActivityIndicator color="#fff" size="small" />}
             {v.isDefault && <Text style={styles.badge}>Default</Text>}
             {v.notify && <Text style={styles.badgeAlt}>Notifica</Text>}
+            <TouchableOpacity
+              onPress={() => confirmRemove(v.plate)}
+              disabled={busyPlate !== null}
+              hitSlop={10}
+              accessibilityLabel={`Borrar ${v.plate}`}
+            >
+              <Text style={styles.remove}>✕</Text>
+            </TouchableOpacity>
           </View>
         </TouchableOpacity>
       ))}
 
       {account.vehicles.length > 1 && (
         <Text style={styles.hint}>Tocá una patente para dejarla por defecto</Text>
+      )}
+
+      {canAdd ? (
+        <View style={styles.addRow}>
+          <TextInput
+            style={[styles.input, styles.addInput]}
+            placeholder="Nueva patente"
+            placeholderTextColor="#889"
+            autoCapitalize="characters"
+            autoCorrect={false}
+            maxLength={9}
+            value={newPlate}
+            onChangeText={setNewPlate}
+            onSubmitEditing={submitNewPlate}
+            editable={busyPlate === null}
+          />
+          <TouchableOpacity
+            style={[styles.addButton, (busyPlate !== null || !newPlate) && styles.buttonDisabled]}
+            onPress={submitNewPlate}
+            disabled={busyPlate !== null || !newPlate}
+          >
+            {adding ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.buttonText}>Agregar</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <Text style={styles.hint}>Máximo {MAX_VEHICLES} vehículos.</Text>
       )}
       <Text style={styles.hint}>Deslizá para actualizar</Text>
     </ScrollView>
@@ -268,6 +354,16 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     fontSize: 12,
     overflow: 'hidden',
+  },
+  remove: { color: '#8b9bb4', fontSize: 18, paddingLeft: 6 },
+  addRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4 },
+  addInput: { flex: 1, marginTop: 0, letterSpacing: 1 },
+  addButton: {
+    backgroundColor: '#2f6df6',
+    borderRadius: 10,
+    paddingVertical: 15,
+    paddingHorizontal: 18,
+    alignItems: 'center',
   },
   hint: { color: '#5a6b84', fontSize: 13, textAlign: 'center', marginTop: 20 },
 });

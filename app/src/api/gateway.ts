@@ -2,7 +2,8 @@
 //
 // La app nativa le pega directo al backend: no hay CORS (no es un navegador) y
 // no hace falta proxy. La sesión se sostiene con una cookie JSESSIONID que
-// capturamos y reenviamos, más un `abh` (UUID de instalación) estable.
+// capturamos y reenviamos. Cada request lleva un `abh` nuevo derivado del UUID
+// de instalación (ver antiBounceHash).
 //
 // Protocolo: POST text/xml a /MParkingGateway/midletGateway con un sobre
 //   <Request><ver>..</ver><abh>..</abh><ser>OPERACION</ser>..campos..</Request>
@@ -44,14 +45,12 @@ interface CallOpts {
   ver: string;
   fields?: Record<string, string>;
   includeAbh?: boolean; // default true
-  /** Manda un abh nuevo por request en vez del UUID fijo (ver antiBounceHash). */
-  antiBounce?: boolean;
 }
 
 /**
  * Réplica de `generateAntiBounceHash` de la app oficial: MD5(uuid + Date.now())
- * en hex, primeros 16 caracteres. Las operaciones de escritura rechazan un abh
- * repetido con error B98.
+ * en hex, primeros 16 caracteres, nuevo en cada request. El server rechaza un abh
+ * ya usado con error B98 (también en signin).
  */
 async function antiBounceHash(): Promise<string> {
   const hex = await digestStringAsync(
@@ -64,11 +63,11 @@ async function antiBounceHash(): Promise<string> {
 
 /** Hace una operación del gateway y devuelve el objeto <Response> parseado. */
 async function call(ser: string, opts: CallOpts): Promise<Record<string, any>> {
-  const { ver, fields = {}, includeAbh = true, antiBounce = false } = opts;
+  const { ver, fields = {}, includeAbh = true } = opts;
 
   let body = `<?xml version="1.0" encoding="utf-8"?>\n<Request><ver>${ver}</ver>`;
   if (includeAbh) {
-    body += `<abh>${antiBounce ? await antiBounceHash() : await getAbh()}</abh>`;
+    body += `<abh>${await antiBounceHash()}</abh>`;
   }
   body += `<ser>${ser}</ser>`;
   for (const [k, v] of Object.entries(fields)) {
@@ -199,7 +198,18 @@ export async function setDefaultVehicle(lic: string): Promise<Vehicle[]> {
   const r = await call('carLicenseRegistration', {
     ver: '7-RN',
     fields: { lic },
-    antiBounce: true,
   });
+  return parseVehicles(r.vehicles);
+}
+
+/** Agrega un vehículo a la cuenta. Responde con la lista actualizada. */
+export async function addVehicle(lic: string): Promise<Vehicle[]> {
+  const r = await call('addUserVehicle', { ver: '11-RN', fields: { lic } });
+  return parseVehicles(r.vehicles);
+}
+
+/** Borra un vehículo de la cuenta. Responde con la lista actualizada. */
+export async function removeVehicle(lic: string): Promise<Vehicle[]> {
+  const r = await call('removeUserVehicle', { ver: '11-RN', fields: { lic } });
   return parseVehicles(r.vehicles);
 }

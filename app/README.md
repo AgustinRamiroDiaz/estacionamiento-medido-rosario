@@ -12,7 +12,8 @@ Stack: Expo (React Native 0.88, React 19) + TypeScript.
 - **Dashboard** (`refreshDashboard`): saldo, vehículos y si hay estacionamiento activo.
 
 No persiste credenciales: el PIN se usa sólo para el login. La sesión se sostiene con
-la cookie `JSESSIONID` + un `abh` (UUID de instalación) estable en `AsyncStorage`.
+la cookie `JSESSIONID`. Cada request lleva un `abh` nuevo: MD5 del UUID de instalación
+(persistido en `AsyncStorage`) + timestamp.
 
 ## Estructura
 
@@ -20,7 +21,7 @@ la cookie `JSESSIONID` + un `abh` (UUID de instalación) estable en `AsyncStorag
 App.tsx              UI (login + dashboard)
 src/api/gateway.ts   cliente del gateway XML (protocolo, cookies, parseo)
 src/api/types.ts     tipos de las respuestas
-src/storage.ts       abh persistente
+src/storage.ts       UUID de instalación persistente (base del abh)
 ```
 
 El protocolo está documentado en [`../docs/`](../docs/).
