@@ -132,6 +132,23 @@ Formato: `operación` (ver) — campos del request además de `ver`/`abh`/`ser`.
 - `longTermParkingPayment` (11-RN) — `fak, lic, car-type, …`
 - `ocassionalParkVehiculePayment` (9-RN) — `fak, lic, car-type, amo, …`
 
+Detalle del post-pago (del bundle; sin verificar en vivo):
+
+- `str` = `id` de la cuadra en el callejero de `streetMapUpdate` (p. ej. `2601` = 3 de Febrero 600).
+- `car-type`: `0` auto, `1` moto, `2` volquete (según formato de patente, `VehiculeType.getVehiculeType`).
+- `fak=true`: simulación. `ParkingStreetScreen` lo llama así para mostrar la pantalla de
+  confirmación; `ConfirmScreen` repite la llamada con `fak=false`, que es la que abre el ticket.
+- Respuesta: `<con>` con JSON `{lic, veh, tar, tim-max, amo-max, end}` (`tar`/`end` strings ya
+  formateados, `tim-max` en horas, `amo-max` en pesos) y alarma opcional `ali/ala/alm/alt`.
+  En error, el texto viene en `<msg>`.
+- `active-parking-status` (dashboard) trae uno o varios `<rec>` con `tra`, `con`, `cmd`, `sta`;
+  `tra` es lo que se manda a `parkVehiculeEndPostPayment` para cerrarlo.
+- La app oficial detecta la cuadra con `expo-location`: `reverseGeocodeAsync` → reemplaza
+  abreviaturas (`Avenida`→`Av.`, `Boulevard`→`Bv.`, …) → busca la calle por `includes` y
+  redondea la altura a la centena (`getStreetFromGoogleDecodedAddress`).
+- El callejero tiene un punto por cuadra (aprox. el medio de la cuadra) y algunos mal cargados
+  (Mendoza 1000 está a 9 km de Mendoza 900; Moreno 300 comparte coordenadas con los "bis").
+
 ### Saldo / pagos
 - `directTopUp` (7-RN) — `amo`
 - `p2pTopUp` (7-RN) — `dst, amo`

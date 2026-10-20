@@ -13,3 +13,8 @@ export function normalizePlate(input: string): string {
 export function isValidPlate(plate: string): boolean {
   return CAR.test(plate) || MOTORBIKE.test(plate);
 }
+
+/** `<car-type>` del gateway: 0 = auto, 1 = moto (2 = volquete, no soportado). */
+export function vehicleType(plate: string): number {
+  return MOTORBIKE.test(plate) ? 1 : 0;
+}

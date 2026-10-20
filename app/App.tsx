@@ -25,7 +25,8 @@ import {
   setDefaultVehicle,
   signin,
 } from './src/api/gateway';
-import { Account, Vehicle } from './src/api/types';
+import { Account, SigninResult, Vehicle } from './src/api/types';
+import { ParkPanel } from './src/ParkPanel';
 import { MAX_VEHICLES, isValidPlate, normalizePlate } from './src/plates';
 
 const pesos = (n: number) =>
@@ -33,12 +34,14 @@ const pesos = (n: number) =>
 
 export default function App() {
   const [account, setAccount] = useState<Account | null>(null);
+  const [streetMapHash, setStreetMapHash] = useState<string>();
   return (
     <SafeAreaView style={styles.safe}>
       <StatusBar style="light" />
       {account ? (
         <Dashboard
           account={account}
+          streetMapHash={streetMapHash}
           onAccount={setAccount}
           onLogout={() => {
             clearSession();
@@ -46,13 +49,18 @@ export default function App() {
           }}
         />
       ) : (
-        <Login onLogin={setAccount} />
+        <Login
+          onLogin={({ account, config }) => {
+            setStreetMapHash(config.streetMapHash);
+            setAccount(account);
+          }}
+        />
       )}
     </SafeAreaView>
   );
 }
 
-function Login({ onLogin }: { onLogin: (a: Account) => void }) {
+function Login({ onLogin }: { onLogin: (r: SigninResult) => void }) {
   const [src, setSrc] = useState('');
   const [pin, setPin] = useState('');
   const [loading, setLoading] = useState(false);
@@ -64,8 +72,7 @@ function Login({ onLogin }: { onLogin: (a: Account) => void }) {
     }
     setLoading(true);
     try {
-      const { account } = await signin(src.trim(), pin);
-      onLogin(account);
+      onLogin(await signin(src.trim(), pin));
     } catch (e: any) {
       Alert.alert('No se pudo ingresar', e?.message ?? 'Error desconocido');
     } finally {
@@ -112,10 +119,12 @@ function Login({ onLogin }: { onLogin: (a: Account) => void }) {
 
 function Dashboard({
   account,
+  streetMapHash,
   onAccount,
   onLogout,
 }: {
   account: Account;
+  streetMapHash?: string;
   onAccount: (a: Account) => void;
   onLogout: () => void;
 }) {
@@ -214,14 +223,15 @@ function Dashboard({
         )}
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.cardLabel}>Estado</Text>
-        <Text style={styles.status}>
-          {account.hasActiveParking
-            ? '🅿️  Estacionamiento en curso'
-            : 'Sin estacionamiento activo'}
-        </Text>
-      </View>
+      {/* active-parking-status con contenido que no supimos leer como <rec> */}
+      {account.hasActiveParking && account.activeParkings.length === 0 && (
+        <View style={styles.card}>
+          <Text style={styles.cardLabel}>Estado</Text>
+          <Text style={styles.status}>🅿️  Estacionamiento en curso</Text>
+        </View>
+      )}
+
+      <ParkPanel account={account} streetMapHash={streetMapHash} onAccount={onAccount} />
 
       <Text style={styles.section}>Vehículos</Text>
       {account.vehicles.length === 0 && (

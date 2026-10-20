@@ -12,7 +12,18 @@
 import { CryptoDigestAlgorithm, CryptoEncoding, digestStringAsync } from 'expo-crypto';
 import { XMLParser } from 'fast-xml-parser';
 import { getAbh } from '../storage';
-import { Account, Config, GatewayError, SigninResult, Vehicle } from './types';
+import { vehicleType } from '../plates';
+import {
+  Account,
+  ActiveParking,
+  Block,
+  Config,
+  GatewayError,
+  ParkingTicket,
+  SigninResult,
+  StreetMap,
+  Vehicle,
+} from './types';
 
 const BASE_URL = 'https://moviltr.com.ar';
 const GATEWAY_PATH = '/MParkingGateway/midletGateway';
@@ -106,7 +117,8 @@ async function call(ser: string, opts: CallOpts): Promise<Record<string, any>> {
 
   const code = String(response.error ?? '');
   if (code !== '0') {
-    const desc = response.errorDescription ?? response.errorCode ?? code;
+    // Las operaciones de estacionar mandan el texto en <msg>.
+    const desc = response.errorDescription ?? response.msg ?? response.errorCode ?? code;
     throw new GatewayError(`Error del servidor: ${desc}`, code);
   }
   return response;
@@ -138,6 +150,34 @@ function parseVehicles(vehiclesNode: any): Vehicle[] {
   }));
 }
 
+/** `con` viene como JSON dentro del tag XML. */
+function parseTicket(con: unknown): ParkingTicket {
+  let c: any = con;
+  if (typeof con === 'string') {
+    try {
+      c = JSON.parse(con);
+    } catch {
+      return {};
+    }
+  }
+  if (!c || typeof c !== 'object') return {};
+  const num = (v: unknown) => (v == null || v === '' ? undefined : Number(v));
+  return {
+    lic: c.lic != null ? String(c.lic) : undefined,
+    veh: c.veh != null ? String(c.veh) : undefined,
+    tar: c.tar != null ? String(c.tar) : undefined,
+    timMaxHours: num(c['tim-max']),
+    amoMax: num(c['amo-max']),
+    end: c.end != null ? String(c.end) : undefined,
+  };
+}
+
+function parseActiveParkings(node: any): ActiveParking[] {
+  return toArray<any>(node?.rec)
+    .filter((rec) => rec?.tra != null && rec.tra !== '')
+    .map((rec) => ({ tra: String(rec.tra), ticket: parseTicket(rec.con) }));
+}
+
 function parseAccount(r: Record<string, any>): Account {
   const activeParking = r['active-parking-status'];
   return {
@@ -150,6 +190,7 @@ function parseAccount(r: Record<string, any>): Account {
     vehicles: parseVehicles(r.vehicles),
     // vacío ('') => sin ticket; si trae contenido => hay estacionamiento en curso
     hasActiveParking: !!activeParking && activeParking !== '',
+    activeParkings: parseActiveParkings(activeParking),
   };
 }
 
@@ -212,4 +253,65 @@ export async function addVehicle(lic: string): Promise<Vehicle[]> {
 export async function removeVehicle(lic: string): Promise<Vehicle[]> {
   const r = await call('removeUserVehicle', { ver: '11-RN', fields: { lic } });
   return parseVehicles(r.vehicles);
+}
+
+/**
+ * Callejero de cuadras con estacionamiento medido. No requiere sesión.
+ * `<streets>` trae un array JSON; `lat` es "lat, lng" en un solo string.
+ */
+export async function streetMapUpdate(): Promise<StreetMap> {
+  const r = await call('streetMapUpdate', { ver: '12-RN' });
+  const stm = r.stm ?? {};
+  let raw: any[] = [];
+  try {
+    raw = JSON.parse(String(stm.streets ?? '[]'));
+  } catch {
+    throw new GatewayError('Callejero con formato inesperado');
+  }
+  const blocks: Block[] = [];
+  for (const s of raw) {
+    const [lat, lng] = String(s.lat ?? '').split(',').map((x) => Number(x.trim()));
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+    blocks.push({
+      id: String(s.id),
+      name: String(s.name),
+      code: String(s.code ?? ''),
+      number: Number(s.number),
+      bis: String(s.bis ?? '').toLowerCase() === 'bis',
+      zone: Number(s.zone ?? 0),
+      lat,
+      lng,
+    });
+  }
+  return { hash: String(stm.hash ?? ''), blocks };
+}
+
+/**
+ * Inicia un estacionamiento post-pago (se cobra al cerrarlo) en la cuadra `str`.
+ *
+ * `simulate: true` manda `<fak>true</fak>`: el server devuelve el ticket que se
+ * abriría (tarifa, máximo, vencimiento) sin abrirlo. La app oficial lo usa así
+ * para la pantalla de confirmación y después repite la llamada con `false`.
+ */
+export async function startParking(
+  lic: string,
+  str: string,
+  simulate: boolean,
+): Promise<ParkingTicket> {
+  const r = await call('parkVehiculeStartPostPayment', {
+    ver: '7-RN',
+    fields: {
+      fak: String(simulate),
+      lic,
+      'car-type': String(vehicleType(lic)),
+      str,
+    },
+  });
+  return parseTicket(r.con);
+}
+
+/** Cierra un estacionamiento post-pago (`tra` de active-parking-status). */
+export async function endParking(tra: string): Promise<ParkingTicket> {
+  const r = await call('parkVehiculeEndPostPayment', { ver: '7-RN', fields: { tra } });
+  return parseTicket(r.con);
 }
