@@ -32,10 +32,10 @@ Response (~680 bytes) — trae **config + hashes de sync + dashboard** de una:
 
   <uid>123456</uid>   <!-- id de usuario -->
 
-  <!-- saldo (en centavos, ×100) -->
+  <!-- saldo en pesos (con decimales; NO en centavos) -->
   <balance>
-    <credit>50000</credit>      <!-- saldo = $500,00 -->
-    <available>50000</available><!-- disponible = $500,00 -->
+    <credit>50000</credit>      <!-- saldo = $50.000 -->
+    <available>50000</available><!-- disponible = $50.000 -->
   </balance>
 
   <!-- patente por defecto -->
@@ -65,8 +65,8 @@ Response (~680 bytes) — trae **config + hashes de sync + dashboard** de una:
 | `thm` | entero (obs. `6`). Lo lee el estado Redux `user` en pantallas de montos/tickets; significado exacto no resuelto desde el bytecode |
 | `qre` | booleano. **No lo usa el cliente** (sin referencias en el bundle v5.17.0) |
 | `uid` | id de usuario |
-| `balance.credit` | saldo (centavos) |
-| `balance.available` | saldo disponible (centavos) — puede diferir de `credit` si hay retenciones |
+| `balance.credit` | saldo en pesos, con decimales (la app oficial lo muestra con `credit.toFixed()` sin escalar) |
+| `balance.available` | saldo disponible en pesos — puede diferir de `credit` si hay retenciones |
 | `default-car-license.lic` | patente por defecto |
 | `streets` | callejero (vacío si el hash local coincide) |
 | `vehicles.vehicle` | lista de vehículos |

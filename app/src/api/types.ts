@@ -7,7 +7,7 @@ export interface Vehicle {
   notify: boolean;
 }
 
-/** Estado de cuenta normalizado para la UI. Montos en pesos (ya divididos /100). */
+/** Estado de cuenta normalizado para la UI. Montos en pesos. */
 export interface Account {
   uid?: string;
   credit: number; // ARS

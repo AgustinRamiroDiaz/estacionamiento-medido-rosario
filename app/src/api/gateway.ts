@@ -101,10 +101,14 @@ function toArray<T>(v: T | T[] | undefined | ''): T[] {
   return Array.isArray(v) ? v : [v];
 }
 
-/** Montos del gateway vienen en centavos (x100). */
-function centavosToPesos(v: unknown): number {
+/**
+ * El saldo (`balance.credit`/`available`) viene en pesos con decimales: la app
+ * oficial lo muestra con `credit.toFixed()` sin escalar. Ojo: los montos de
+ * recarga y tarifas sí vienen en centavos.
+ */
+function toPesos(v: unknown): number {
   const n = Number(v);
-  return Number.isFinite(n) ? n / 100 : 0;
+  return Number.isFinite(n) ? n : 0;
 }
 
 function parseVehicles(vehiclesNode: any): Vehicle[] {
@@ -120,8 +124,8 @@ function parseAccount(r: Record<string, any>): Account {
   const activeParking = r['active-parking-status'];
   return {
     uid: r.uid != null ? String(r.uid) : undefined,
-    credit: centavosToPesos(r.balance?.credit),
-    available: centavosToPesos(r.balance?.available),
+    credit: toPesos(r.balance?.credit),
+    available: toPesos(r.balance?.available),
     defaultPlate: r['default-car-license']?.lic
       ? String(r['default-car-license'].lic)
       : undefined,
