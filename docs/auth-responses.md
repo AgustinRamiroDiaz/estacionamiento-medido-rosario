@@ -98,6 +98,10 @@ de dashboard** de `signin`, sin config ni hashes ni `uid`:
 
 - `signin` setea `JSESSIONID`. `refreshDashboard` y el resto de las operaciones
   autenticadas funcionan mandando esa cookie + el mismo `abh`.
+- Las operaciones de escritura (al menos `carLicenseRegistration`) rechazan un
+  `abh` repetido con `error=B98`. La app oficial manda en cada request
+  `MD5(uuid + Date.now())` en hex, primeros 16 caracteres
+  (`generateAntiBounceHash`).
 - No se observó token bearer ni expiración explícita en el body; la vigencia la
   maneja el `JSESSIONID` del lado del server (Tomcat/Wicket).
 

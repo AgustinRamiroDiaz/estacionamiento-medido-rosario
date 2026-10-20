@@ -17,7 +17,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { refreshDashboard, signin, clearSession } from './src/api/gateway';
+import { refreshDashboard, setDefaultVehicle, signin, clearSession } from './src/api/gateway';
 import { Account } from './src/api/types';
 
 const pesos = (n: number) =>
@@ -124,6 +124,26 @@ function Dashboard({
     }
   }, [onAccount]);
 
+  const [changingPlate, setChangingPlate] = useState<string | null>(null);
+
+  const makeDefault = async (plate: string) => {
+    setChangingPlate(plate);
+    try {
+      const vehicles = await setDefaultVehicle(plate);
+      // Si la respuesta no trae <vehicles>, no pisamos la lista con una vacía.
+      if (vehicles.length === 0) {
+        onAccount(await refreshDashboard());
+        return;
+      }
+      const def = vehicles.find((v) => v.isDefault)?.plate;
+      onAccount({ ...account, vehicles, defaultPlate: def ?? account.defaultPlate });
+    } catch (e: any) {
+      Alert.alert('No se pudo cambiar la patente', e?.message ?? 'Error');
+    } finally {
+      setChangingPlate(null);
+    }
+  };
+
   return (
     <ScrollView
       contentContainerStyle={styles.dashboard}
@@ -160,15 +180,24 @@ function Dashboard({
         <Text style={styles.cardSub}>No hay vehículos cargados.</Text>
       )}
       {account.vehicles.map((v) => (
-        <View key={v.plate} style={styles.vehicleRow}>
+        <TouchableOpacity
+          key={v.plate}
+          style={styles.vehicleRow}
+          onPress={() => makeDefault(v.plate)}
+          disabled={v.isDefault || changingPlate !== null}
+        >
           <Text style={styles.plate}>{v.plate}</Text>
           <View style={styles.badges}>
+            {changingPlate === v.plate && <ActivityIndicator color="#fff" size="small" />}
             {v.isDefault && <Text style={styles.badge}>Default</Text>}
             {v.notify && <Text style={styles.badgeAlt}>Notifica</Text>}
           </View>
-        </View>
+        </TouchableOpacity>
       ))}
 
+      {account.vehicles.length > 1 && (
+        <Text style={styles.hint}>Tocá una patente para dejarla por defecto</Text>
+      )}
       <Text style={styles.hint}>Deslizá para actualizar</Text>
     </ScrollView>
   );

@@ -8,6 +8,7 @@
 //   <Request><ver>..</ver><abh>..</abh><ser>OPERACION</ser>..campos..</Request>
 // Respuesta: <Response><error>N</error>..</Response> (N=0 => OK).
 
+import { CryptoDigestAlgorithm, CryptoEncoding, digestStringAsync } from 'expo-crypto';
 import { XMLParser } from 'fast-xml-parser';
 import { getAbh } from '../storage';
 import { Account, Config, GatewayError, SigninResult, Vehicle } from './types';
@@ -43,14 +44,32 @@ interface CallOpts {
   ver: string;
   fields?: Record<string, string>;
   includeAbh?: boolean; // default true
+  /** Manda un abh nuevo por request en vez del UUID fijo (ver antiBounceHash). */
+  antiBounce?: boolean;
+}
+
+/**
+ * Réplica de `generateAntiBounceHash` de la app oficial: MD5(uuid + Date.now())
+ * en hex, primeros 16 caracteres. Las operaciones de escritura rechazan un abh
+ * repetido con error B98.
+ */
+async function antiBounceHash(): Promise<string> {
+  const hex = await digestStringAsync(
+    CryptoDigestAlgorithm.MD5,
+    (await getAbh()) + Date.now(),
+    { encoding: CryptoEncoding.HEX },
+  );
+  return hex.substring(0, 16);
 }
 
 /** Hace una operación del gateway y devuelve el objeto <Response> parseado. */
 async function call(ser: string, opts: CallOpts): Promise<Record<string, any>> {
-  const { ver, fields = {}, includeAbh = true } = opts;
+  const { ver, fields = {}, includeAbh = true, antiBounce = false } = opts;
 
   let body = `<?xml version="1.0" encoding="utf-8"?>\n<Request><ver>${ver}</ver>`;
-  if (includeAbh) body += `<abh>${await getAbh()}</abh>`;
+  if (includeAbh) {
+    body += `<abh>${antiBounce ? await antiBounceHash() : await getAbh()}</abh>`;
+  }
   body += `<ser>${ser}</ser>`;
   for (const [k, v] of Object.entries(fields)) {
     body += `<${k}>${xmlEscape(v)}</${k}>`;
@@ -169,4 +188,18 @@ export async function signin(src: string, pin: string): Promise<SigninResult> {
 export async function refreshDashboard(): Promise<Account> {
   const r = await call('refreshDashboard', { ver: '7-RN' });
   return parseAccount(r);
+}
+
+/**
+ * Marca `lic` como patente por defecto. La app oficial usa `carLicenseRegistration`
+ * para esto (no hay otra operación); el server responde con la lista de
+ * vehículos ya actualizada.
+ */
+export async function setDefaultVehicle(lic: string): Promise<Vehicle[]> {
+  const r = await call('carLicenseRegistration', {
+    ver: '7-RN',
+    fields: { lic },
+    antiBounce: true,
+  });
+  return parseVehicles(r.vehicles);
 }

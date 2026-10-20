@@ -151,7 +151,7 @@ Formato: `operación` (ver) — campos del request además de `ver`/`abh`/`ser`.
 ### Patente / varios
 - `carLicenseInformation` (10-RN) — `lic, str`
 - `carLicenseInformationAnonymous` (10-RN) — `lic, str`  (anónima)
-- `carLicenseRegistration` (7-RN) — `lic`
+- `carLicenseRegistration` (7-RN) — `lic`  ← marca `lic` como patente por defecto (la app la usa sólo en `changeSavedPlateDefault`); responde con `<vehicles>` actualizado
 - `suggestion` (7-RN) — `sug`
 
 ### Facturas
