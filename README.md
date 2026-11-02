@@ -26,6 +26,7 @@ Toda la app lo consume con requests y responses en XML.
 - [`docs/api-reference.md`](docs/api-reference.md) — protocolo, envelope, catálogo de operaciones y campos
 - [`docs/live-findings.md`](docs/live-findings.md) — resultados de las llamadas reales al gateway
 - [`docs/samples/`](docs/samples/) — respuestas XML crudas capturadas
+- [`docs/web-app.md`](docs/web-app.md) — viabilidad de una web app/PWA (CORS, proxy, seguridad) e idea con Tauri
 
 ## Consideraciones
 
