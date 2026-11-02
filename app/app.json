@@ -29,7 +29,8 @@
         {
           "locationWhenInUsePermission": "Usamos tu ubicación para detectar la cuadra donde estacionás."
         }
-      ]
+      ],
+      "expo-status-bar"
     ]
   }
 }
