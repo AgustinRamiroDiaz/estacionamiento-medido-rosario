@@ -13,6 +13,8 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
+import Slider from '@react-native-community/slider';
 import MapView, { Circle, Marker, Polyline } from 'react-native-maps';
 import {
   endParking,
@@ -34,6 +36,7 @@ import {
   isParkingTime,
   parseTariffTable,
   quoteByAmount,
+  quoteByEnd,
   quoteByMinutes,
   quoteFree,
   sliderLimits,
@@ -55,8 +58,6 @@ const pesos = (n: number) =>
 const when = (d: Date) =>
   (d.toDateString() === new Date().toDateString() ? '' : d.toLocaleDateString('es-AR') + ' ') +
   d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
-const MINUTES_STEP = 15;
-const AMOUNT_STEP = 10000; // centavos
 
 /** Nombre de calle según el geocoder del sistema, o null si tarda o falla. */
 async function geocodedStreet(lat: number, lng: number): Promise<string | null> {
@@ -81,9 +82,10 @@ type Step =
       table: TariffTable;
       input: QuoteInput;
       info: LicenseInfo;
-      mode: 'time' | 'amount' | 'free';
-      minutes: number;
-      amount: number; // centavos
+      free: boolean; // beneficio frentista
+      /** El último control que movió el usuario; los otros se derivan de la cotización. */
+      by: 'time' | 'amount' | 'end';
+      value: number; // minutos, centavos o epoch ms según `by`
     };
 
 export function ParkPanel({
@@ -180,7 +182,7 @@ export function ParkPanel({
       };
       const table = parseTariffTable(json);
       if (!sliderLimits(table, input)) throw new Error('No se puede pagar por adelantado en esta cuadra.');
-      setStep({ kind: 'prepaid', block: selected, plate, table, input, info, mode: 'time', minutes: 60, amount: 0 });
+      setStep({ kind: 'prepaid', block: selected, plate, table, input, info, free: false, by: 'time', value: 60 });
     } catch (e: any) {
       Alert.alert('No se puede pagar por adelantado', e?.message ?? 'Error');
     } finally {
@@ -465,7 +467,10 @@ export function ParkPanel({
 
 type PrepaidStep = Extract<Step, { kind: 'prepaid' }>;
 
-/** Tiempo o monto con +/−, cotizado en el cliente como la app oficial. */
+/**
+ * Tiempo, monto y hora de fin a la vez: el slider que se mueve cotiza (con la
+ * calculadora de la app oficial) y los otros dos siguen a la cotización.
+ */
 function PrepaidCard({
   step,
   busy,
@@ -477,20 +482,76 @@ function PrepaidCard({
   onChange: (s: PrepaidStep | { kind: 'idle' }) => void;
   onPay: (lic: string, block: Block, quote: Quote, free: boolean) => void;
 }) {
-  const { table, input, info, mode } = step;
+  const { table, info, by, value, free } = step;
+  // Re-cotiza con la hora actual: el prepago empieza cuando se paga, no cuando se abrió la pantalla.
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+  const input = { ...step.input, start: now };
   const limits = sliderLimits(table, input)!;
-  const quote =
-    mode === 'free'
-      ? quoteFree(table, input)
-      : mode === 'time'
-        ? quoteByMinutes(table, input, step.minutes)
-        : quoteByAmount(table, input, step.amount);
+  // quoteByEnd no aplica el tiempo máximo (igual que la app oficial): lo topea el slider.
+  const maxEnd = Math.min(
+    limits.maxEnd.getTime(),
+    quoteByMinutes(table, input, limits.maxMinutes)?.end.getTime() ?? limits.maxEnd.getTime(),
+  );
+  const quote = free
+    ? quoteFree(table, input)
+    : by === 'time'
+      ? quoteByMinutes(table, input, value)
+      : by === 'amount'
+        ? quoteByAmount(table, input, value)
+        : quoteByEnd(table, input, new Date(value));
   const outOfHours = !isParkingTime(table, input);
   const set = (patch: Partial<PrepaidStep>) => onChange({ ...step, ...patch });
-  const bump = (dir: 1 | -1) =>
-    mode === 'time'
-      ? set({ minutes: Math.min(Math.max(step.minutes + dir * MINUTES_STEP, MINUTES_STEP), limits.maxMinutes) })
-      : set({ amount: Math.min(Math.max((quote?.amount ?? 0) + dir * AMOUNT_STEP, 0), limits.maxAmount) });
+  /** Reloj del sistema: la hora elegida es del día de la banda y se acota como el slider. */
+  const pickEnd = () =>
+    DateTimePickerAndroid.open({
+      value: quote?.end ?? limits.minEnd,
+      mode: 'time',
+      is24Hour: true,
+      onChange: (e, d) => {
+        if (e.type !== 'set' || !d) return;
+        const end = new Date(limits.minEnd);
+        end.setHours(d.getHours(), d.getMinutes(), 0, 0);
+        set({ by: 'end', value: Math.min(Math.max(end.getTime(), limits.minEnd.getTime()), maxEnd) });
+      },
+    });
+  // El slider que se arrastra muestra lo pedido; los demás, lo cotizado.
+  const shown = (k: PrepaidStep['by'], quoted: number) => (by === k && !free ? value : quoted);
+  const rows: { k: PrepaidStep['by']; label: string; text: string; min: number; max: number; step: number; v: number }[] =
+    quote
+      ? [
+          {
+            k: 'time',
+            label: 'Tiempo',
+            text: `${Math.floor(quote.minutes / 60)}:${String(Math.round(quote.minutes % 60)).padStart(2, '0')} h`,
+            min: 0,
+            max: limits.maxMinutes,
+            step: 1,
+            v: shown('time', quote.minutes),
+          },
+          {
+            k: 'amount',
+            label: 'Monto',
+            text: pesos(quote.amount / 100),
+            min: 0,
+            max: limits.maxAmount,
+            step: 100,
+            v: shown('amount', quote.amount),
+          },
+          {
+            k: 'end',
+            label: 'Hora de fin',
+            text: when(quote.end),
+            min: limits.minEnd.getTime(),
+            max: maxEnd,
+            step: 60_000,
+            v: shown('end', quote.end.getTime()),
+          },
+        ]
+      : [];
 
   return (
     <View style={styles.card}>
@@ -502,55 +563,62 @@ function PrepaidCard({
       {outOfHours && quote && (
         <Text style={styles.warn}>Fuera de horario: el tiempo empieza a contar {when(quote.start)}.</Text>
       )}
-
-      <View style={styles.plates}>
-        {(['time', 'amount'] as const).map((m) => (
-          <TouchableOpacity
-            key={m}
-            style={[styles.chip, mode === m && styles.chipOn]}
-            onPress={() => set({ mode: m, amount: quote?.amount ?? 0 })}
-          >
-            <Text style={styles.chipText}>{m === 'time' ? 'Tiempo' : 'Monto'}</Text>
-          </TouchableOpacity>
-        ))}
-        {info.homeZone && info.freeAvailable && (
-          <TouchableOpacity style={[styles.chip, mode === 'free' && styles.chipOn]} onPress={() => set({ mode: 'free' })}>
+      {info.homeZone && info.freeAvailable && (
+        <View style={styles.plates}>
+          <TouchableOpacity style={[styles.chip, free && styles.chipOn]} onPress={() => set({ free: !free })}>
             <Text style={styles.chipText}>Beneficio frentista</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-
-      {mode !== 'free' && (
-        <View style={styles.stepper}>
-          <TouchableOpacity style={styles.stepButton} onPress={() => bump(-1)} accessibilityLabel="Menos">
-            <Text style={styles.big}>−</Text>
-          </TouchableOpacity>
-          <Text style={styles.big}>
-            {mode === 'time' ? `${Math.floor(step.minutes / 60)}:${String(step.minutes % 60).padStart(2, '0')} h` : pesos((quote?.amount ?? 0) / 100)}
-          </Text>
-          <TouchableOpacity style={styles.stepButton} onPress={() => bump(1)} accessibilityLabel="Más">
-            <Text style={styles.big}>+</Text>
           </TouchableOpacity>
         </View>
       )}
 
+      {rows.map((r) => (
+        <View key={r.k} style={styles.sliderRow}>
+          <View style={styles.sliderHead}>
+            <Text style={styles.sub}>{r.label}</Text>
+            {r.k === 'end' ? (
+              <TouchableOpacity onPress={pickEnd} disabled={free || busy} accessibilityLabel="Elegir hora de fin">
+                <Text style={[styles.sliderValue, styles.pickable]}>🕒 {r.text}</Text>
+              </TouchableOpacity>
+            ) : (
+              <Text style={styles.sliderValue}>{r.text}</Text>
+            )}
+          </View>
+          <Slider
+            minimumValue={r.min}
+            maximumValue={r.max}
+            step={r.step}
+            value={Math.min(Math.max(r.v, r.min), r.max)}
+            onValueChange={(v) => set({ by: r.k, value: v })}
+            disabled={free || busy}
+            minimumTrackTintColor="#2f6df6"
+            maximumTrackTintColor="#2a3850"
+            thumbTintColor="#fff"
+            accessibilityLabel={r.label}
+          />
+        </View>
+      ))}
+
       {quote ? (
-        <>
-          <Text style={styles.sub}>Importe: {pesos(quote.amount / 100)}</Text>
-          <Text style={styles.sub}>Tiempo: {Math.round(quote.minutes)} min</Text>
-          <Text style={styles.sub}>Inicio: {when(quote.start)}</Text>
-          <Text style={styles.sub}>Fin: {when(quote.end)}</Text>
-        </>
+        <Text style={styles.sub}>
+          Desde {when(quote.start)}
+          {free ? ' · beneficio frentista' : ''}
+        </Text>
       ) : (
         <Text style={styles.warn}>No queda tiempo para comprar en esta cuadra.</Text>
       )}
 
       <TouchableOpacity
         style={[styles.button, (!quote || busy) && styles.disabled]}
-        onPress={() => quote && onPay(step.plate, step.block, quote, mode === 'free')}
+        onPress={() => quote && onPay(step.plate, step.block, quote, free)}
         disabled={!quote || busy}
       >
-        {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Pagar estacionamiento</Text>}
+        {busy ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <Text style={styles.buttonText}>
+            {quote ? `Pagar ${pesos(quote.amount / 100)}` : 'Pagar estacionamiento'}
+          </Text>
+        )}
       </TouchableOpacity>
       <TouchableOpacity onPress={() => onChange({ kind: 'idle' })} disabled={busy}>
         <Text style={styles.link}>Cancelar</Text>
@@ -693,16 +761,10 @@ const styles = StyleSheet.create({
   payRow: { flexDirection: 'row', gap: 10 },
   payButton: { flex: 1 },
   spinner: { marginTop: 16 },
-  stepper: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 14 },
-  stepButton: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    borderWidth: 1,
-    borderColor: '#2a3850',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  sliderRow: { marginTop: 14 },
+  sliderHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
+  sliderValue: { color: '#fff', fontSize: 18, fontWeight: '700' },
+  pickable: { textDecorationLine: 'underline' },
   disabled: { opacity: 0.6 },
   buttonText: { color: '#fff', fontSize: 16, fontWeight: '600', textAlign: 'center' },
 });

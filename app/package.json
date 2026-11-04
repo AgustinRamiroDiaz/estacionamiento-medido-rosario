@@ -4,6 +4,8 @@
   "main": "index.ts",
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-native-community/datetimepicker": "9.2.1",
+    "@react-native-community/slider": "5.2.1",
     "expo": "~58.0.22",
     "expo-crypto": "~58.0.7",
     "expo-location": "~58.0.20",

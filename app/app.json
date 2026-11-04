@@ -30,7 +30,8 @@
           "locationWhenInUsePermission": "Usamos tu ubicación para detectar la cuadra donde estacionás."
         }
       ],
-      "expo-status-bar"
+      "expo-status-bar",
+      "@react-native-community/datetimepicker"
     ]
   }
 }
