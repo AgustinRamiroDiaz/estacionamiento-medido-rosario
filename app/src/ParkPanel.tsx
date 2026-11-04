@@ -3,7 +3,7 @@
 // cerrarlos.
 
 import * as Location from 'expo-location';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -13,14 +13,21 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import MapView, { Circle, Marker, Polyline } from 'react-native-maps';
 import { endParking, refreshDashboard, startParking } from './api/gateway';
 import { Account, ActiveParking, Block, ParkingTicket, StreetMap } from './api/types';
-import { Candidate, blockLabel, findCandidates, searchBlocks } from './locate';
+import { Candidate, blockLabel, blockSegment, findCandidates, searchBlocks } from './locate';
 import { getStreetMap } from './streets';
 
 const GEOCODE_TIMEOUT_MS = 4000;
 /** Con más error que esto avisamos que la cuadra puede estar mal. */
 const POOR_ACCURACY_M = 40;
+/** Plaza 25 de Mayo: centro del mapa cuando no hay GPS ni cuadra elegida. */
+const ROSARIO = { latitude: -32.9468, longitude: -60.6393 };
+const ZOOM = { latitudeDelta: 0.004, longitudeDelta: 0.004 };
+/** Los mismos bordes que las opciones de abajo. */
+const BLOCK_COLOR = '#2a3850';
+const SELECTED_COLOR = '#2f6df6';
 
 const pesos = (n: number) =>
   n.toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
@@ -34,10 +41,12 @@ async function geocodedStreet(lat: number, lng: number): Promise<string | null> 
   return Promise.race([lookup, timeout]);
 }
 
+type LatLng = { latitude: number; longitude: number };
+
 type Step =
   | { kind: 'idle' }
   | { kind: 'locating' }
-  | { kind: 'choose'; candidates: Candidate[]; accuracy?: number }
+  | { kind: 'choose'; candidates: Candidate[]; accuracy?: number; here?: LatLng; picked?: LatLng }
   | { kind: 'quote'; block: Block; plate: string; ticket: ParkingTicket };
 
 export function ParkPanel({
@@ -78,7 +87,7 @@ export function ParkPanel({
       const street = await geocodedStreet(latitude, longitude);
       const candidates = findCandidates(m.blocks, latitude, longitude, street);
       setSelected(candidates[0]?.block ?? null);
-      setStep({ kind: 'choose', candidates, accuracy: accuracy ?? undefined });
+      setStep({ kind: 'choose', candidates, accuracy: accuracy ?? undefined, here: { latitude, longitude } });
     } catch (e: any) {
       Alert.alert('No se pudo ubicar', e?.message ?? 'Error');
       setStep({ kind: 'idle' });
@@ -93,6 +102,14 @@ export function ParkPanel({
     } catch (e: any) {
       Alert.alert('No se pudo bajar el callejero', e?.message ?? 'Error');
     }
+  };
+
+  /** Punto tocado en el mapa: reemplaza las cuadras sugeridas por las de ahí. */
+  const pick = (p: LatLng) => {
+    if (!map || step.kind !== 'choose') return;
+    const candidates = findCandidates(map.blocks, p.latitude, p.longitude);
+    setSelected(candidates[0]?.block ?? null);
+    setStep({ ...step, candidates, picked: p });
   };
 
   const quote = async () => {
@@ -199,7 +216,22 @@ export function ParkPanel({
               GPS impreciso (±{Math.round(step.accuracy)} m): revisá la cuadra.
             </Text>
           )}
-          {step.candidates.length === 0 && step.accuracy !== undefined && (
+          <BlockMap
+            here={step.here}
+            allBlocks={map?.blocks ?? []}
+            blocks={[...step.candidates.map((c) => c.block), ...results]}
+            selected={selected}
+            onSelect={setSelected}
+            picked={step.picked}
+            onPick={pick}
+          />
+          <Text style={styles.hint}>Tocá el mapa para elegir otro lugar.</Text>
+          {step.here && (
+            <TouchableOpacity onPress={locate}>
+              <Text style={styles.link}>🔄  Actualizar ubicación</Text>
+            </TouchableOpacity>
+          )}
+          {step.candidates.length === 0 && (step.accuracy !== undefined || step.picked) && (
             <Text style={styles.warn}>No hay cuadras con estacionamiento medido cerca.</Text>
           )}
           {step.candidates.map((c) => (
@@ -296,6 +328,72 @@ export function ParkPanel({
   );
 }
 
+function BlockMap({
+  here,
+  allBlocks,
+  blocks,
+  selected,
+  onSelect,
+  picked,
+  onPick,
+}: {
+  here?: LatLng;
+  allBlocks: Block[];
+  picked?: LatLng;
+  onPick: (p: LatLng) => void;
+  blocks: Block[];
+  selected: Block | null;
+  onSelect: (b: Block) => void;
+}) {
+  const ref = useRef<MapView>(null);
+  const focus = selected ? { latitude: selected.lat, longitude: selected.lng } : here ?? ROSARIO;
+  useEffect(() => {
+    ref.current?.animateToRegion({ ...focus, ...ZOOM }, 300);
+  }, [focus.latitude, focus.longitude]);
+
+  // Candidatos y resultados de búsqueda pueden repetir cuadra.
+  const unique = [...new Map(blocks.map((b) => [b.id, b])).values()];
+  return (
+    <MapView
+      ref={ref}
+      style={styles.map}
+      initialRegion={{ ...focus, ...ZOOM }}
+      showsUserLocation={!!here}
+      toolbarEnabled={false}
+      onPress={(e) => onPick(e.nativeEvent.coordinate)}
+    >
+      {/* Circle y no Marker: el pin se come los toques cercanos y no se puede re-elegir al lado. */}
+      {picked && (
+        <Circle center={picked} radius={12} fillColor="#4ade80" strokeColor="#fff" strokeWidth={3} zIndex={3} />
+      )}
+      {unique.map((b) => {
+        const on = selected?.id === b.id;
+        const segment = blockSegment(allBlocks, b);
+        // Android no repinta colores sin remontar: la selección va en la key.
+        return segment ? (
+          <Polyline
+            key={`${b.id}-${on}`}
+            coordinates={segment}
+            strokeColor={on ? SELECTED_COLOR : BLOCK_COLOR}
+            strokeWidth={on ? 10 : 7}
+            zIndex={on ? 2 : 1}
+            tappable
+            onPress={() => onSelect(b)}
+          />
+        ) : (
+          <Marker
+            key={`${b.id}-${on}`}
+            coordinate={{ latitude: b.lat, longitude: b.lng }}
+            title={blockLabel(b)}
+            pinColor={on ? SELECTED_COLOR : BLOCK_COLOR}
+            onPress={() => onSelect(b)}
+          />
+        );
+      })}
+    </MapView>
+  );
+}
+
 function BlockOption({
   block,
   detail,
@@ -317,11 +415,13 @@ function BlockOption({
 
 const styles = StyleSheet.create({
   card: { backgroundColor: '#1b2638', borderRadius: 14, padding: 18, marginBottom: 14 },
+  map: { height: 220, borderRadius: 10, marginBottom: 8 },
   row: { flexDirection: 'row', alignItems: 'center' },
   cardLabel: { color: '#8b9bb4', fontSize: 13, textTransform: 'uppercase', marginBottom: 6 },
   big: { color: '#fff', fontSize: 22, fontWeight: '700', letterSpacing: 1 },
   line: { color: '#fff', fontSize: 17, marginTop: 4 },
   sub: { color: '#8b9bb4', fontSize: 14, marginTop: 6 },
+  hint: { color: '#8b9bb4', fontSize: 13, marginBottom: 8 },
   warn: { color: '#fbbf24', fontSize: 14, marginBottom: 8 },
   link: { color: '#8b9bb4', fontSize: 15, textAlign: 'center', marginTop: 14 },
   input: {

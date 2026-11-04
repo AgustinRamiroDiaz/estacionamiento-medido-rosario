@@ -41,6 +41,18 @@ function toXY(lat: number, lng: number, lat0: number): XY {
   };
 }
 
+export interface Point {
+  latitude: number;
+  longitude: number;
+}
+
+function fromXY(p: XY, lat0: number): Point {
+  return {
+    latitude: p.y / 110_540,
+    longitude: p.x / (111_320 * Math.cos((lat0 * Math.PI) / 180)),
+  };
+}
+
 function distToSegment(p: XY, a: XY, b: XY): number {
   const dx = b.x - a.x;
   const dy = b.y - a.y;
@@ -137,6 +149,28 @@ export function findCandidates(
 
   const score = (c: Candidate) => c.distance - (c.geocoderMatch ? GEOCODER_BONUS_M : 0);
   return out.sort((a, b) => score(a) - score(b)).slice(0, limit);
+}
+
+/**
+ * Tramo de la cuadra para dibujarla. El punto del callejero cae a mitad de
+ * cuadra, así que las esquinas son los puntos medios con las cuadras vecinas
+ * (o el reflejo, si falta una). Null si no tiene vecinas para estimarlo.
+ */
+export function blockSegment(blocks: Block[], b: Block): [Point, Point] | null {
+  if (b.bis) return null;
+  const p = toXY(b.lat, b.lng, b.lat);
+  const neighbor = (number: number) => {
+    const n = blocks.find((x) => x.name === b.name && !x.bis && x.number === number);
+    const q = n && toXY(n.lat, n.lng, b.lat);
+    return q && dist(p, q) <= MAX_SEGMENT_M ? q : null;
+  };
+  const prev = neighbor(b.number - 100);
+  const next = neighbor(b.number + 100);
+  if (!prev && !next) return null;
+  const half = (q: XY, sign: number) => ({ x: p.x + (sign * (q.x - p.x)) / 2, y: p.y + (sign * (q.y - p.y)) / 2 });
+  const a = prev ? half(prev, 1) : half(next!, -1);
+  const z = next ? half(next, 1) : half(prev!, -1);
+  return [fromXY(a, b.lat), fromXY(z, b.lat)];
 }
 
 export function blockLabel(b: Block): string {
