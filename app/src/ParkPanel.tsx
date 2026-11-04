@@ -14,10 +14,30 @@ import {
   View,
 } from 'react-native';
 import MapView, { Circle, Marker, Polyline } from 'react-native-maps';
-import { endParking, refreshDashboard, startParking } from './api/gateway';
-import { Account, ActiveParking, Block, ParkingTicket, StreetMap } from './api/types';
+import {
+  endParking,
+  licenseInformation,
+  parkingStatus,
+  prepay,
+  refreshDashboard,
+  startParking,
+} from './api/gateway';
+import { Account, ActiveParking, Block, Config, LicenseInfo, ParkingTicket, StreetMap } from './api/types';
+import { cancelAlarm, scheduleAlarm } from './alarms';
 import { Candidate, blockLabel, blockSegment, findCandidates, searchBlocks } from './locate';
-import { getStreetMap } from './streets';
+import { vehicleType } from './plates';
+import { getStreetMap, getTariffTableJson } from './streets';
+import {
+  Quote,
+  QuoteInput,
+  TariffTable,
+  isParkingTime,
+  parseTariffTable,
+  quoteByAmount,
+  quoteByMinutes,
+  quoteFree,
+  sliderLimits,
+} from './tariff';
 
 const GEOCODE_TIMEOUT_MS = 4000;
 /** Con más error que esto avisamos que la cuadra puede estar mal. */
@@ -31,6 +51,12 @@ const SELECTED_COLOR = '#2f6df6';
 
 const pesos = (n: number) =>
   n.toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
+/** Hora, y la fecha si no es hoy. */
+const when = (d: Date) =>
+  (d.toDateString() === new Date().toDateString() ? '' : d.toLocaleDateString('es-AR') + ' ') +
+  d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+const MINUTES_STEP = 15;
+const AMOUNT_STEP = 10000; // centavos
 
 /** Nombre de calle según el geocoder del sistema, o null si tarda o falla. */
 async function geocodedStreet(lat: number, lng: number): Promise<string | null> {
@@ -47,15 +73,26 @@ type Step =
   | { kind: 'idle' }
   | { kind: 'locating' }
   | { kind: 'choose'; candidates: Candidate[]; accuracy?: number; here?: LatLng; picked?: LatLng }
-  | { kind: 'quote'; block: Block; plate: string; ticket: ParkingTicket };
+  | { kind: 'quote'; block: Block; plate: string; ticket: ParkingTicket }
+  | {
+      kind: 'prepaid';
+      block: Block;
+      plate: string;
+      table: TariffTable;
+      input: QuoteInput;
+      info: LicenseInfo;
+      mode: 'time' | 'amount' | 'free';
+      minutes: number;
+      amount: number; // centavos
+    };
 
 export function ParkPanel({
   account,
-  streetMapHash,
+  config,
   onAccount,
 }: {
   account: Account;
-  streetMapHash?: string;
+  config?: Config;
   onAccount: (a: Account) => void;
 }) {
   const [step, setStep] = useState<Step>({ kind: 'idle' });
@@ -67,7 +104,7 @@ export function ParkPanel({
 
   const loadMap = async () => {
     if (map) return map;
-    const m = await getStreetMap(streetMapHash);
+    const m = await getStreetMap(config?.streetMapHash);
     setMap(m);
     return m;
   };
@@ -125,10 +162,59 @@ export function ParkPanel({
     }
   };
 
+  const startPrepaid = async () => {
+    if (!selected || !plate) return;
+    setBusy(true);
+    try {
+      const [json, info] = await Promise.all([
+        getTariffTableJson(config?.tariffTableHash),
+        licenseInformation(plate, selected.id),
+      ]);
+      const input: QuoteInput = {
+        zone: selected.zone,
+        vehicleType: vehicleType(plate) as 0 | 1 | 2,
+        homeZone: info.homeZone,
+        start: new Date(),
+        extendsFrom: info.paidUntil && info.paidUntil > new Date() ? info.paidUntil : undefined,
+        paidSince: info.paidSince,
+      };
+      const table = parseTariffTable(json);
+      if (!sliderLimits(table, input)) throw new Error('No se puede pagar por adelantado en esta cuadra.');
+      setStep({ kind: 'prepaid', block: selected, plate, table, input, info, mode: 'time', minutes: 60, amount: 0 });
+    } catch (e: any) {
+      Alert.alert('No se puede pagar por adelantado', e?.message ?? 'Error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const pay = (lic: string, block: Block, quote: Quote, free: boolean) =>
+    Alert.alert('Pagar estacionamiento', `¿Confirmás el pago de ${pesos(quote.amount / 100)} hasta las ${when(quote.end)}?`, [
+      { text: 'Volver', style: 'cancel' },
+      {
+        text: 'Pagar',
+        onPress: async () => {
+          setBusy(true);
+          try {
+            const ticket = await prepay(lic, block.id, quote.amount, free);
+            await scheduleAlarm(lic, ticket.alarm);
+            onAccount(await refreshDashboard());
+            setStep({ kind: 'idle' });
+            Alert.alert('Estacionamiento pagado', `${lic} en ${blockLabel(block)} hasta ${ticket.end ?? when(quote.end)}.`);
+          } catch (e: any) {
+            Alert.alert('No se pudo pagar', e?.message ?? 'Error');
+          } finally {
+            setBusy(false);
+          }
+        },
+      },
+    ]);
+
   const confirm = async (block: Block, lic: string) => {
     setBusy(true);
     try {
-      await startParking(lic, block.id, false);
+      const ticket = await startParking(lic, block.id, false);
+      await scheduleAlarm(lic, ticket.alarm);
       onAccount(await refreshDashboard());
       setStep({ kind: 'idle' });
       Alert.alert('Estacionamiento abierto', `${lic} en ${blockLabel(block)}.`);
@@ -149,6 +235,7 @@ export function ParkPanel({
           setBusy(true);
           try {
             await endParking(p.tra);
+            if (p.ticket.lic) await cancelAlarm(p.ticket.lic);
             onAccount(await refreshDashboard());
           } catch (e: any) {
             Alert.alert('No se pudo finalizar', e?.message ?? 'Error');
@@ -159,6 +246,20 @@ export function ParkPanel({
       },
     ]);
 
+  /** Estado al día de los diferidos que se tocaron "Actualizar", por `tra`. */
+  const [status, setStatus] = useState<Record<string, ParkingTicket>>({});
+  const refreshStatus = async (p: ActiveParking) => {
+    setBusy(true);
+    try {
+      const ticket = await parkingStatus(p.tra);
+      setStatus((s) => ({ ...s, [p.tra]: ticket }));
+    } catch (e: any) {
+      Alert.alert('No se pudo actualizar', e?.message ?? 'Error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const results = useMemo(
     () => (map && query.trim() ? searchBlocks(map.blocks, query) : []),
     [map, query],
@@ -166,21 +267,39 @@ export function ParkPanel({
 
   return (
     <View>
-      {account.activeParkings.map((p) => (
-        <View key={p.tra} style={styles.card}>
-          <Text style={styles.cardLabel}>Estacionamiento en curso</Text>
-          <Text style={styles.big}>{p.ticket.lic ?? '—'}</Text>
-          {p.ticket.tar && <Text style={styles.sub}>Tarifa: {p.ticket.tar}</Text>}
-          {p.ticket.end && <Text style={styles.sub}>Vence: {p.ticket.end}</Text>}
-          <TouchableOpacity
-            style={[styles.button, styles.danger, busy && styles.disabled]}
-            onPress={() => close(p)}
-            disabled={busy}
-          >
-            <Text style={styles.buttonText}>Finalizar</Text>
-          </TouchableOpacity>
-        </View>
-      ))}
+      {account.activeParkings.map((p) => {
+        const t = { ...p.ticket, ...status[p.tra] };
+        return (
+          <View key={p.tra} style={styles.card}>
+            <Text style={styles.cardLabel}>
+              {p.postPayment ? 'Estacionamiento diferido' : 'Estacionamiento prepago'}
+            </Text>
+            <Text style={styles.big}>{t.lic ?? '—'}</Text>
+            {p.postPayment && t.sta && (
+              <Text style={styles.sub}>Estado: {t.sta === 'Ok' ? 'Abierto' : 'Vencido'}</Text>
+            )}
+            {t.tar && <Text style={styles.sub}>Tarifa: {t.tar}</Text>}
+            {t.amoMax !== undefined && <Text style={styles.sub}>Máximo a cobrar: {pesos(t.amoMax)}</Text>}
+            {t.end && <Text style={styles.sub}>{p.postPayment ? 'Vence' : 'Fin'}: {t.end}</Text>}
+            {p.postPayment ? (
+              <>
+                <TouchableOpacity onPress={() => refreshStatus(p)} disabled={busy}>
+                  <Text style={styles.link}>🔄  Actualizar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.button, styles.danger, busy && styles.disabled]}
+                  onPress={() => close(p)}
+                  disabled={busy}
+                >
+                  <Text style={styles.buttonText}>Finalizar</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <Text style={styles.sub}>Los prepagos no se pueden cerrar antes.</Text>
+            )}
+          </View>
+        );
+      })}
 
       {step.kind === 'idle' && (
         <View style={styles.card}>
@@ -275,24 +394,40 @@ export function ParkPanel({
             </View>
           )}
 
-          <TouchableOpacity
-            style={[styles.button, (!selected || busy) && styles.disabled]}
-            onPress={quote}
-            disabled={!selected || busy}
-          >
-            {busy ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.buttonText}>
-                {selected ? `Continuar con ${plate} en ${blockLabel(selected)}` : 'Elegí una cuadra'}
-              </Text>
-            )}
-          </TouchableOpacity>
+          <Text style={styles.line}>
+            {selected ? `${plate} en ${blockLabel(selected)}` : 'Elegí una cuadra'}
+          </Text>
+          {busy ? (
+            <ActivityIndicator color="#fff" style={styles.spinner} />
+          ) : (
+            <View style={styles.payRow}>
+              <TouchableOpacity
+                style={[styles.button, styles.payButton, !selected && styles.disabled]}
+                onPress={startPrepaid}
+                disabled={!selected}
+              >
+                <Text style={styles.buttonText}>Adelantado</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.button, styles.payButton, !selected && styles.disabled]}
+                onPress={quote}
+                disabled={!selected}
+              >
+                <Text style={styles.buttonText}>Diferido</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          <Text style={styles.sub}>
+            Diferido: se paga al cerrarlo; si no lo cerrás se cobra el máximo. Adelantado: pagás
+            ahora un tiempo fijo.
+          </Text>
           <TouchableOpacity onPress={() => setStep({ kind: 'idle' })}>
             <Text style={styles.link}>Cancelar</Text>
           </TouchableOpacity>
         </View>
       )}
+
+      {step.kind === 'prepaid' && <PrepaidCard step={step} busy={busy} onChange={setStep} onPay={pay} />}
 
       {step.kind === 'quote' && (
         <View style={styles.card}>
@@ -324,6 +459,102 @@ export function ParkPanel({
           </TouchableOpacity>
         </View>
       )}
+    </View>
+  );
+}
+
+type PrepaidStep = Extract<Step, { kind: 'prepaid' }>;
+
+/** Tiempo o monto con +/−, cotizado en el cliente como la app oficial. */
+function PrepaidCard({
+  step,
+  busy,
+  onChange,
+  onPay,
+}: {
+  step: PrepaidStep;
+  busy: boolean;
+  onChange: (s: PrepaidStep | { kind: 'idle' }) => void;
+  onPay: (lic: string, block: Block, quote: Quote, free: boolean) => void;
+}) {
+  const { table, input, info, mode } = step;
+  const limits = sliderLimits(table, input)!;
+  const quote =
+    mode === 'free'
+      ? quoteFree(table, input)
+      : mode === 'time'
+        ? quoteByMinutes(table, input, step.minutes)
+        : quoteByAmount(table, input, step.amount);
+  const outOfHours = !isParkingTime(table, input);
+  const set = (patch: Partial<PrepaidStep>) => onChange({ ...step, ...patch });
+  const bump = (dir: 1 | -1) =>
+    mode === 'time'
+      ? set({ minutes: Math.min(Math.max(step.minutes + dir * MINUTES_STEP, MINUTES_STEP), limits.maxMinutes) })
+      : set({ amount: Math.min(Math.max((quote?.amount ?? 0) + dir * AMOUNT_STEP, 0), limits.maxAmount) });
+
+  return (
+    <View style={styles.card}>
+      <Text style={styles.cardLabel}>Pago adelantado</Text>
+      <Text style={styles.line}>
+        {step.plate} en {blockLabel(step.block)}
+      </Text>
+      {input.extendsFrom && <Text style={styles.sub}>Extiende el prepago que vence {when(input.extendsFrom)}.</Text>}
+      {outOfHours && quote && (
+        <Text style={styles.warn}>Fuera de horario: el tiempo empieza a contar {when(quote.start)}.</Text>
+      )}
+
+      <View style={styles.plates}>
+        {(['time', 'amount'] as const).map((m) => (
+          <TouchableOpacity
+            key={m}
+            style={[styles.chip, mode === m && styles.chipOn]}
+            onPress={() => set({ mode: m, amount: quote?.amount ?? 0 })}
+          >
+            <Text style={styles.chipText}>{m === 'time' ? 'Tiempo' : 'Monto'}</Text>
+          </TouchableOpacity>
+        ))}
+        {info.homeZone && info.freeAvailable && (
+          <TouchableOpacity style={[styles.chip, mode === 'free' && styles.chipOn]} onPress={() => set({ mode: 'free' })}>
+            <Text style={styles.chipText}>Beneficio frentista</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {mode !== 'free' && (
+        <View style={styles.stepper}>
+          <TouchableOpacity style={styles.stepButton} onPress={() => bump(-1)} accessibilityLabel="Menos">
+            <Text style={styles.big}>−</Text>
+          </TouchableOpacity>
+          <Text style={styles.big}>
+            {mode === 'time' ? `${Math.floor(step.minutes / 60)}:${String(step.minutes % 60).padStart(2, '0')} h` : pesos((quote?.amount ?? 0) / 100)}
+          </Text>
+          <TouchableOpacity style={styles.stepButton} onPress={() => bump(1)} accessibilityLabel="Más">
+            <Text style={styles.big}>+</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {quote ? (
+        <>
+          <Text style={styles.sub}>Importe: {pesos(quote.amount / 100)}</Text>
+          <Text style={styles.sub}>Tiempo: {Math.round(quote.minutes)} min</Text>
+          <Text style={styles.sub}>Inicio: {when(quote.start)}</Text>
+          <Text style={styles.sub}>Fin: {when(quote.end)}</Text>
+        </>
+      ) : (
+        <Text style={styles.warn}>No queda tiempo para comprar en esta cuadra.</Text>
+      )}
+
+      <TouchableOpacity
+        style={[styles.button, (!quote || busy) && styles.disabled]}
+        onPress={() => quote && onPay(step.plate, step.block, quote, mode === 'free')}
+        disabled={!quote || busy}
+      >
+        {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Pagar estacionamiento</Text>}
+      </TouchableOpacity>
+      <TouchableOpacity onPress={() => onChange({ kind: 'idle' })} disabled={busy}>
+        <Text style={styles.link}>Cancelar</Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -459,6 +690,19 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
   danger: { backgroundColor: '#dc2626' },
+  payRow: { flexDirection: 'row', gap: 10 },
+  payButton: { flex: 1 },
+  spinner: { marginTop: 16 },
+  stepper: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 14 },
+  stepButton: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: '#2a3850',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   disabled: { opacity: 0.6 },
   buttonText: { color: '#fff', fontSize: 16, fontWeight: '600', textAlign: 'center' },
 });

@@ -19,6 +19,8 @@ import {
   Block,
   Config,
   GatewayError,
+  LicenseInfo,
+  ParkingAlarm,
   ParkingTicket,
   SigninResult,
   StreetMap,
@@ -169,13 +171,33 @@ function parseTicket(con: unknown): ParkingTicket {
     timMaxHours: num(c['tim-max']),
     amoMax: num(c['amo-max']),
     end: c.end != null ? String(c.end) : undefined,
+    sta: c.sta != null ? String(c.sta) : undefined,
   };
+}
+
+/** 'DD/MM/YY HH:mm' en hora local, el formato de fechas del server. */
+function parseServerDate(v: unknown): Date | undefined {
+  const m = String(v ?? '').match(/^(\d{2})\/(\d{2})\/(\d{2,4}) (\d{2}):(\d{2})/);
+  if (!m) return undefined;
+  const year = Number(m[3]) < 100 ? 2000 + Number(m[3]) : Number(m[3]);
+  return new Date(year, Number(m[2]) - 1, Number(m[1]), Number(m[4]), Number(m[5]));
+}
+
+/** `ala === 'set'` => el server pide avisar en `alt` con el texto `alm`. */
+function parseAlarm(r: Record<string, any>): ParkingAlarm | undefined {
+  const at = parseServerDate(r.alt);
+  if (String(r.ala) !== 'set' || !at) return undefined;
+  return { at, message: String(r.alm ?? 'Tu estacionamiento está por vencer.') };
 }
 
 function parseActiveParkings(node: any): ActiveParking[] {
   return toArray<any>(node?.rec)
     .filter((rec) => rec?.tra != null && rec.tra !== '')
-    .map((rec) => ({ tra: String(rec.tra), ticket: parseTicket(rec.con) }));
+    .map((rec) => ({
+      tra: String(rec.tra),
+      postPayment: rec.cmd === 'closePostPayment',
+      ticket: parseTicket(rec.con),
+    }));
 }
 
 function parseAccount(r: Record<string, any>): Account {
@@ -307,11 +329,65 @@ export async function startParking(
       str,
     },
   });
-  return parseTicket(r.con);
+  return { ...parseTicket(r.con), alarm: parseAlarm(r) };
 }
 
 /** Cierra un estacionamiento post-pago (`tra` de active-parking-status). */
 export async function endParking(tra: string): Promise<ParkingTicket> {
   const r = await call('parkVehiculeEndPostPayment', { ver: '7-RN', fields: { tra } });
   return parseTicket(r.con);
+}
+
+/** Estado actual de un post-pago abierto (lo que muestra la app oficial al tocarlo). */
+export async function parkingStatus(tra: string): Promise<ParkingTicket> {
+  const r = await call('updateParkPostPaymentVehicule', { ver: '7-RN', fields: { tra } });
+  return parseTicket(r.con);
+}
+
+/** Tabla de tarifas (JSON de `<tto>`), para calcular prepagos en el cliente. */
+export async function tariffTableUpdate(): Promise<{ hash: string; json: string }> {
+  const r = await call('tariffTableUpdate', { ver: '11-RN' });
+  const t = r.tta?.['tariff-table'];
+  if (!t?.tto) throw new GatewayError('Tabla de tarifas con formato inesperado');
+  return { hash: String(t.hash ?? ''), json: String(t.tto) };
+}
+
+export async function licenseInformation(lic: string, str: string): Promise<LicenseInfo> {
+  const r = await call('carLicenseInformation', { ver: '10-RN', fields: { lic, str } });
+  const homeStreets = toArray<any>(r.streets?.street).map((s) => String(s['str-num']));
+  return {
+    homeZone: homeStreets.includes(str),
+    freeAvailable: String(r.fpc) === 'true',
+    paidUntil: parseServerDate(r['end-last-payment']),
+    paidSince: parseServerDate(r['start-first-payment']),
+  };
+}
+
+/**
+ * Prepago: cobra `amo` (centavos, calculado en el cliente con la tabla de
+ * tarifas) en el momento. No tiene simulación ni se puede cerrar antes.
+ * `free` usa el beneficio frentista.
+ *
+ * Ojo: viaja en pesos con dos decimales ("352.50", como getAmountInCurrency de
+ * la app oficial). Mandado en centavos, el server lo toma como pesos y cobra el
+ * máximo permitido.
+ */
+export async function prepay(
+  lic: string,
+  str: string,
+  amo: number,
+  free: boolean,
+): Promise<ParkingTicket> {
+  const r = await call('parkVehiculePayment', {
+    ver: '7-RN',
+    fields: {
+      fak: 'false',
+      lic,
+      'car-type': String(vehicleType(lic)),
+      amo: `${Math.trunc(amo / 100)}.${String(amo % 100).padStart(2, '0')}`,
+      str,
+      tcm: free ? 'free' : 'dinamic', // sic, como la app oficial
+    },
+  });
+  return { ...parseTicket(r.con), alarm: parseAlarm(r) };
 }

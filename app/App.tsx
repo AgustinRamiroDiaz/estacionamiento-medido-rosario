@@ -25,7 +25,7 @@ import {
   setDefaultVehicle,
   signin,
 } from './src/api/gateway';
-import { Account, SigninResult, Vehicle } from './src/api/types';
+import { Account, Config, SigninResult, Vehicle } from './src/api/types';
 import { ParkPanel } from './src/ParkPanel';
 import { MAX_VEHICLES, isValidPlate, normalizePlate } from './src/plates';
 
@@ -34,14 +34,14 @@ const pesos = (n: number) =>
 
 export default function App() {
   const [account, setAccount] = useState<Account | null>(null);
-  const [streetMapHash, setStreetMapHash] = useState<string>();
+  const [config, setConfig] = useState<Config>();
   return (
     <SafeAreaView style={styles.safe}>
       <StatusBar style="light" />
       {account ? (
         <Dashboard
           account={account}
-          streetMapHash={streetMapHash}
+          config={config}
           onAccount={setAccount}
           onLogout={() => {
             clearSession();
@@ -51,7 +51,7 @@ export default function App() {
       ) : (
         <Login
           onLogin={({ account, config }) => {
-            setStreetMapHash(config.streetMapHash);
+            setConfig(config);
             setAccount(account);
           }}
         />
@@ -119,12 +119,12 @@ function Login({ onLogin }: { onLogin: (r: SigninResult) => void }) {
 
 function Dashboard({
   account,
-  streetMapHash,
+  config,
   onAccount,
   onLogout,
 }: {
   account: Account;
-  streetMapHash?: string;
+  config?: Config;
   onAccount: (a: Account) => void;
   onLogout: () => void;
 }) {
@@ -231,7 +231,7 @@ function Dashboard({
         </View>
       )}
 
-      <ParkPanel account={account} streetMapHash={streetMapHash} onAccount={onAccount} />
+      <ParkPanel account={account} config={config} onAccount={onAccount} />
 
       <Text style={styles.section}>Vehículos</Text>
       {account.vehicles.length === 0 && (

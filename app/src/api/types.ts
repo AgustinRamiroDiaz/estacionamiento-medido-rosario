@@ -54,11 +54,29 @@ export interface ParkingTicket {
   timMaxHours?: number;
   amoMax?: number; // ARS
   end?: string; // vencimiento, ya formateado
+  sta?: string; // 'Ok' = vigente; otro valor = vencido
+  /** Aviso de vencimiento que pide el server (ali/ala/alm/alt, fuera de `con`). */
+  alarm?: ParkingAlarm;
 }
 
-/** Un estacionamiento post-pago abierto (`active-parking-status.rec`). */
+export interface ParkingAlarm {
+  at: Date;
+  message: string;
+}
+
+/** `carLicenseInformation`: datos de la patente para estacionar en una cuadra. */
+export interface LicenseInfo {
+  homeZone: boolean; // la cuadra está entre las de frentista de la patente
+  freeAvailable: boolean; // le queda el beneficio frentista (`fpc`)
+  paidUntil?: Date; // fin del prepago vigente, para extenderlo
+  paidSince?: Date; // inicio de ese prepago: la extensión sigue su escala de tarifas
+}
+
+/** Un estacionamiento en curso (`active-parking-status.rec`). */
 export interface ActiveParking {
   tra: string; // id de transacción, para cerrarlo
+  /** Diferido (post-pago): se cierra a mano. Los prepagos no se pueden cerrar. */
+  postPayment: boolean;
   ticket: ParkingTicket;
 }
 

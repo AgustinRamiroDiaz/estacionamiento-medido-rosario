@@ -149,6 +149,19 @@ Detalle del post-pago (del bundle; sin verificar en vivo):
 - El callejero tiene un punto por cuadra (aprox. el medio de la cuadra) y algunos mal cargados
   (Mendoza 1000 está a 9 km de Mendoza 900; Moreno 300 comparte coordenadas con los "bis").
 
+Prepago (`parkVehiculePayment`), verificado en vivo:
+
+- `amo` va en **pesos con dos decimales** (`"352.50"`, `getAmountInCurrency` de la app). El
+  server no lo valida contra ninguna cotización: lo cobra, topeado al máximo comprable (fin de
+  la banda / tiempo máximo). Mandar centavos (`35250`) cobró el máximo: $1239.62 hasta las 20:00.
+- `tcm`: `dinamic` (sic) normal, `free` para el beneficio frentista. No hay `fak=true`.
+- El monto lo calcula el cliente con la tabla de `tariffTableUpdate` (`TariffCalculator`).
+- Respuesta: `msg` con el resumen, `con` = `{lic, ini, end, tim, amo, str-num, str-nam, zon,
+  tar, veh, num}` (fechas `DD/MM/YY HH:mm`, `amo` en pesos) y alarma `ali/alt/ala/alm`
+  (`ala=set` ⇒ avisar en `alt` con el texto `alm`).
+- `carLicenseInformation` (`lic`, `str`) responde p. ej. `{lic, streets: '', fpc: 'false'}`:
+  `streets.street[].str-num` son las cuadras frentistas, `fpc` si queda beneficio frentista.
+
 ### Saldo / pagos
 - `directTopUp` (7-RN) — `amo`
 - `p2pTopUp` (7-RN) — `dst, amo`
