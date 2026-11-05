@@ -139,7 +139,7 @@ Detalle del post-pago (del bundle; sin verificar en vivo):
 - `fak=true`: simulación. `ParkingStreetScreen` lo llama así para mostrar la pantalla de
   confirmación; `ConfirmScreen` repite la llamada con `fak=false`, que es la que abre el ticket.
 - Respuesta: `<con>` con JSON `{lic, veh, tar, tim-max, amo-max, end}` (`tar`/`end` strings ya
-  formateados, `tim-max` en horas, `amo-max` en pesos) y alarma opcional `ali/ala/alm/alt`.
+  formateados, `tim-max` como `"H:MM"` (p. ej. `"0:15"`; verificado en vivo), `amo-max` en pesos) y alarma opcional `ali/ala/alm/alt`.
   En error, el texto viene en `<msg>`.
 - `active-parking-status` (dashboard) trae uno o varios `<rec>` con `tra`, `con`, `cmd`, `sta`;
   `tra` es lo que se manda a `parkVehiculeEndPostPayment` para cerrarlo.

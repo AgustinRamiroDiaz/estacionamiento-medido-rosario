@@ -51,7 +51,7 @@ export interface ParkingTicket {
   lic?: string;
   veh?: string; // "Auto" / "Moto"
   tar?: string; // tarifa, ya formateada por el server
-  timMaxHours?: number;
+  timMax?: string; // 'H:MM', ya formateado
   amoMax?: number; // ARS
   end?: string; // vencimiento, ya formateado
   sta?: string; // 'Ok' = vigente; otro valor = vencido

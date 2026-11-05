@@ -168,7 +168,7 @@ function parseTicket(con: unknown): ParkingTicket {
     lic: c.lic != null ? String(c.lic) : undefined,
     veh: c.veh != null ? String(c.veh) : undefined,
     tar: c.tar != null ? String(c.tar) : undefined,
-    timMaxHours: num(c['tim-max']),
+    timMax: c['tim-max'] != null ? String(c['tim-max']) : undefined,
     amoMax: num(c['amo-max']),
     end: c.end != null ? String(c.end) : undefined,
     sta: c.sta != null ? String(c.sta) : undefined,

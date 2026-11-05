@@ -440,8 +440,8 @@ export function ParkPanel({
           {step.ticket.amoMax !== undefined && (
             <Text style={styles.sub}>Máximo a cobrar: {pesos(step.ticket.amoMax)}</Text>
           )}
-          {step.ticket.timMaxHours !== undefined && (
-            <Text style={styles.sub}>Tiempo máximo: {step.ticket.timMaxHours} hs</Text>
+          {step.ticket.timMax && (
+            <Text style={styles.sub}>Tiempo máximo: {step.ticket.timMax} hs</Text>
           )}
           {step.ticket.end && <Text style={styles.sub}>Vence: {step.ticket.end}</Text>}
           <Text style={styles.sub}>Se cobra lo usado al finalizar.</Text>
